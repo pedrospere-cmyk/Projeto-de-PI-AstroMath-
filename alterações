@@ -1,0 +1,295 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+
+#include <allegro5/allegro.h>
+#include <allegro5/allegro_font.h>
+#include <allegro5/allegro_primitives.h>
+#include <allegro5/allegro_ttf.h>
+
+#define WIDTH 1920
+#define HEIGHT 1080
+#define ENEMIES 4
+#define MAX_SHOTS 1
+#define SHOT_SPEED 26.0f
+#define SHIP_NOSE_X 230.0f
+#define ENEMY_X 1500.0f
+#define FIRST_LANE_Y 330.0f
+#define LANE_GAP 150.0f
+
+typedef struct {
+    int answer;
+    bool active;
+} Enemy;
+
+typedef struct {
+    float x, y;
+    float vx, vy;
+    int target;
+    bool active;
+} Shot;
+
+static int random_between(int low, int high) {
+    return low + rand() % (high - low + 1);
+}
+
+static float lane_y(int lane) {
+    return FIRST_LANE_Y + lane * LANE_GAP;
+}
+
+static void draw_text_scaled(ALLEGRO_FONT* font, ALLEGRO_COLOR color,
+    float x, float y, int flags, const char* text, float scale) {
+    (void)scale;
+    al_draw_text(font, color, x, y, flags, text);
+}
+
+static void draw_textf_scaled(ALLEGRO_FONT* font, ALLEGRO_COLOR color,
+    float x, float y, int flags, float scale,
+    const char* format, int value) {
+    char text[128];
+    snprintf(text, sizeof(text), format, value);
+    draw_text_scaled(font, color, x, y, flags, text, scale);
+}
+
+static void fire_at(int target, float ship_y, Shot shots[MAX_SHOTS]) {
+    for (int i = 0; i < MAX_SHOTS; ++i) {
+        if (!shots[i].active) {
+            float target_y = lane_y(target);
+            float dx = ENEMY_X - SHIP_NOSE_X;
+            float dy = target_y - ship_y;
+            float distance = sqrtf(dx * dx + dy * dy);
+            shots[i].x = SHIP_NOSE_X;
+            shots[i].y = ship_y;
+            shots[i].vx = SHOT_SPEED * dx / distance;
+            shots[i].vy = SHOT_SPEED * dy / distance;
+            shots[i].target = target;
+            shots[i].active = true;
+            break;
+        }
+    }
+}
+
+static int question_result(char question[128]) {
+    int result;
+    switch (random_between(0, 3)) {
+    case 0: { // Equacao do primeiro grau: ax + b = c
+        int coefficient = random_between(2, 9);
+        int x = random_between(-5, 12);
+        int constant = random_between(-12, 18);
+        int right_side = coefficient * x + constant;
+        snprintf(question, 128, "Resolva: %dx %+d = %d (x = ?)", coefficient, constant, right_side);
+        result = x;
+        break;
+    }
+    case 1: { // Equacao do segundo grau com duas raizes inteiras; pede a maior.
+        int root1 = random_between(-5, 8);
+        int root2 = random_between(-5, 8);
+        while (root2 == root1) root2 = random_between(-5, 8);
+        int sum = root1 + root2;
+        int product = root1 * root2;
+        snprintf(question, 128, "Resolva: x^2 % +d x %+d = 0 (maior raiz)", -sum, product);
+        result = root1 > root2 ? root1 : root2;
+        break;
+    }
+    case 2: { // Potencia e raiz quadrada exata.
+        int root = random_between(2, 15);
+        snprintf(question, 128, "Se x^2 = %d e x > 0, quanto vale x?", root * root);
+        result = root;
+        break;
+    }
+    default: { // Porcentagem com resultado inteiro.
+        int percentages[] = { 10, 20, 25, 50 };
+        int percent = percentages[random_between(0, 3)];
+        int multiplier = percent == 10 ? 10 : percent == 20 ? 5 : percent == 25 ? 4 : 2;
+        int base = random_between(4, 20) * multiplier;
+        snprintf(question, 128, "Quanto e %d%% de %d?", percent, base);
+        result = percent * base / 100;
+        break;
+    }
+    }
+    return result;
+}
+
+static void new_question(char question[128], int* correct, Enemy enemies[ENEMIES]) {
+    int result = question_result(question);
+    *correct = random_between(0, ENEMIES - 1);
+    for (int i = 0; i < ENEMIES; ++i) {
+        enemies[i].active = true;
+        if (i == *correct) {
+            enemies[i].answer = result;
+        }
+        else {
+            int candidate;
+            bool duplicate;
+            do {
+                int offset = random_between(1, 12);
+                candidate = result + (rand() % 2 ? offset : -offset);
+                duplicate = candidate == result;
+                for (int j = 0; j < i; ++j) {
+                    if (enemies[j].answer == candidate) duplicate = true;
+                }
+            } while (duplicate);
+            enemies[i].answer = candidate;
+        }
+    }
+}
+
+int main(void) {
+    if (!al_init() || !al_install_keyboard() || !al_install_mouse() ||
+        !al_init_primitives_addon() || !al_init_font_addon() || !al_init_ttf_addon()) {
+        fprintf(stderr, "Nao foi possivel inicializar o Allegro.\n");
+        return 1;
+    }
+
+    ALLEGRO_DISPLAY* display = al_create_display(WIDTH, HEIGHT);
+    ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
+    ALLEGRO_TIMER* timer = al_create_timer(1.0 / 60.0);
+    ALLEGRO_FONT* font = al_load_ttf_font("C:\\Windows\\Fonts\\arial.ttf", 36, 0);
+    if (!font) font = al_create_builtin_font();
+    if (!display || !queue || !timer || !font) {
+        fprintf(stderr, "Nao foi possivel criar a janela ou os recursos do jogo.\n");
+        if (font) al_destroy_font(font);
+        if (timer) al_destroy_timer(timer);
+        if (queue) al_destroy_event_queue(queue);
+        if (display) al_destroy_display(display);
+        return 1;
+    }
+
+    al_set_window_title(display, "Defesa Matematica Espacial");
+    al_register_event_source(queue, al_get_display_event_source(display));
+    al_register_event_source(queue, al_get_keyboard_event_source());
+    al_register_event_source(queue, al_get_mouse_event_source());
+    al_register_event_source(queue, al_get_timer_event_source(timer));
+
+    srand((unsigned int)time(NULL));
+    Enemy enemies[ENEMIES];
+    Shot shots[MAX_SHOTS] = { 0 };
+    bool keys[ALLEGRO_KEY_MAX] = { false };
+    char question[128];
+    int correct, score = 0, lives = 3;
+    float shipY = HEIGHT / 2.0f;
+    new_question(question, &correct, enemies);
+    bool running = true, game_over = false, redraw = true;
+    al_start_timer(timer);
+
+    while (running) {
+        ALLEGRO_EVENT event;
+        al_wait_for_event(queue, &event);
+
+        if (event.type == ALLEGRO_EVENT_DISPLAY_CLOSE) running = false;
+        if (event.type == ALLEGRO_EVENT_KEY_DOWN) {
+            int key = event.keyboard.keycode;
+            keys[key] = true;
+            if (key == ALLEGRO_KEY_ESCAPE) running = false;
+            if (game_over && key == ALLEGRO_KEY_R) {
+                score = 0;
+                lives = 3;
+                game_over = false;
+                shipY = HEIGHT / 2.0f;
+                for (int i = 0; i < MAX_SHOTS; ++i) shots[i].active = false;
+                new_question(question, &correct, enemies);
+                redraw = true;
+            }
+        }
+        if (event.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && !game_over && event.mouse.button == 1) {
+            for (int i = 0; i < ENEMIES; ++i) {
+                float y = lane_y(i);
+                if (event.mouse.x >= 1370 && event.mouse.x <= 1810 &&
+                    event.mouse.y >= y - 55 && event.mouse.y <= y + 55) {
+                    fire_at(i, shipY, shots);
+                    redraw = true;
+                    break;
+                }
+            }
+        }
+        if (event.type == ALLEGRO_EVENT_KEY_UP) {
+            keys[event.keyboard.keycode] = false;
+        }
+        if (event.type == ALLEGRO_EVENT_TIMER) redraw = true;
+
+        if (event.type == ALLEGRO_EVENT_TIMER && !game_over) {
+            if (keys[ALLEGRO_KEY_UP]) shipY -= 4.0f;
+            if (keys[ALLEGRO_KEY_DOWN]) shipY += 4.0f;
+            if (shipY < 180.0f) shipY = 180.0f;
+            if (shipY > HEIGHT - 150.0f) shipY = HEIGHT - 150.0f;
+
+            for (int i = 0; i < MAX_SHOTS; ++i) {
+                if (!shots[i].active) continue;
+                shots[i].x += shots[i].vx;
+                shots[i].y += shots[i].vy;
+                float targetY = lane_y(shots[i].target);
+                float dx = shots[i].x - ENEMY_X;
+                float dy = shots[i].y - targetY;
+                if (dx * dx + dy * dy <= 34.0f * 34.0f) {
+                    int choice = shots[i].target;
+                    shots[i].active = false;
+                    if (choice == correct) {
+                        score += 100;
+                        new_question(question, &correct, enemies);
+                    }
+                    else {
+                        --lives;
+                        if (lives <= 0) game_over = true;
+                    }
+                }
+                else if (shots[i].x > WIDTH || shots[i].y < 0 || shots[i].y > HEIGHT) {
+                    shots[i].active = false;
+                }
+            }
+        }
+
+        if (redraw && al_is_event_queue_empty(queue)) {
+            al_clear_to_color(al_map_rgb(8, 12, 35));
+            ALLEGRO_COLOR white = al_map_rgb(240, 245, 255);
+            ALLEGRO_COLOR red = al_map_rgb(245, 65, 75);
+            ALLEGRO_COLOR cyan = al_map_rgb(70, 220, 255);
+
+            // Header HUD
+            draw_textf_scaled(font, red, 55, 55, 0, 3.0f, "VIDAS: %d", lives);
+            draw_textf_scaled(font, cyan, WIDTH - 55, 55, ALLEGRO_ALIGN_RIGHT, 3.0f, "PONTOS: %d", score);
+            draw_text_scaled(font, white, WIDTH / 2, 65, ALLEGRO_ALIGN_CENTRE, "DEFESA MATEMATICA ESPACIAL", 3.0f);
+            draw_text_scaled(font, white, WIDTH / 2, 190, ALLEGRO_ALIGN_CENTRE, question, 3.0f);
+
+            // Nave apontada para a direita.
+            al_draw_filled_triangle(SHIP_NOSE_X, shipY, SHIP_NOSE_X - 90, shipY - 55,
+                SHIP_NOSE_X - 90, shipY + 55, cyan);
+            draw_text_scaled(font, white, 160, shipY + 72, ALLEGRO_ALIGN_CENTRE, "", 2.5f);
+
+            // Quatro inimigos em faixas verticais, cada um com uma resposta.
+            for (int i = 0; i < ENEMIES; ++i) {
+                float y = lane_y(i);
+                if (enemies[i].active) {
+                    al_draw_filled_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22,
+                        al_map_rgb(65, 20, 38));
+                    al_draw_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22, red, 4);
+                    al_draw_filled_circle(ENEMY_X, y, 34, red);
+                    al_draw_filled_circle(ENEMY_X - 12, y - 8, 7, al_map_rgb(255, 220, 220));
+                    char answer[64];
+                    snprintf(answer, sizeof(answer), "%d", enemies[i].answer);
+                    draw_text_scaled(font, white, 1590, y - 18, ALLEGRO_ALIGN_CENTRE, answer, 3.5f);
+                }
+            }
+            for (int i = 0; i < MAX_SHOTS; ++i) {
+                if (shots[i].active) {
+                    al_draw_filled_circle(shots[i].x, shots[i].y, 5, al_map_rgb(255, 235, 90));
+                }
+            }
+            if (game_over) {
+                al_draw_filled_rounded_rectangle(560, 390, 1360, 650, 24, 24, al_map_rgb(16, 20, 48));
+                draw_text_scaled(font, red, WIDTH / 2, 425, ALLEGRO_ALIGN_CENTRE, "FIM DE JOGO", 4.0f);
+                draw_textf_scaled(font, white, WIDTH / 2, 500, ALLEGRO_ALIGN_CENTRE, 3.0f, "Pontuacao final: %d", score);
+                draw_text_scaled(font, white, WIDTH / 2, 570, ALLEGRO_ALIGN_CENTRE, "Pressione R para jogar novamente", 2.5f);
+            }
+            al_flip_display();
+            redraw = false;
+        }
+    }
+
+    al_destroy_font(font);
+    al_destroy_timer(timer);
+    al_destroy_event_queue(queue);
+    al_destroy_display(display);
+    return 0;
+}
