@@ -5,13 +5,19 @@
 #include <math.h>
 
 #include <allegro5/allegro.h>
-#include <allegro5/allegro_font.h>
+#include <allegro5/allegro_image.h>
 #include <allegro5/allegro_primitives.h>
+#include <allegro5/allegro_font.h>
 #include <allegro5/allegro_ttf.h>
 
-// Configuracoes da janela, dos inimigos e dos tiros.
-#define WIDTH 1920
-#define HEIGHT 1080
+#define LARGURA 1920
+#define ALTURA 1080
+
+#define MENU 0
+#define JOGO 1
+#define CONFIGURACOES 2
+#define RANKING 3
+
 #define ENEMIES 4
 #define SHOT_SPEED 26.0f
 #define SHIP_NOSE_X 230.0f
@@ -142,215 +148,473 @@ static void new_question(char question[128], int* correct, Enemy enemies[ENEMIES
     }
 }
 
-int main(void) {
-    // Inicializa o Allegro e cria janela, fila de eventos, timer e fonte.
-    if (!al_init() || !al_install_keyboard() || !al_install_mouse() ||
-        !al_init_primitives_addon() || !al_init_font_addon() || !al_init_ttf_addon()) {
-        fprintf(stderr, "Nao foi possivel inicializar o Allegro.\n");
-        return 1;
-    }
+int main(void)
+{
+    // =================================
+    // VARIAVEIS
+    // =================================
 
-    ALLEGRO_DISPLAY* display = al_create_display(WIDTH, HEIGHT);
-    ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
-    ALLEGRO_TIMER* timer = al_create_timer(1.0 / 60.0);
-    ALLEGRO_FONT* font = al_load_ttf_font("C:\\Windows\\Fonts\\arial.ttf", 36, 0);
-    if (!font) font = al_create_builtin_font();
-    if (!display || !queue || !timer || !font) {
-        fprintf(stderr, "Nao foi possivel criar a janela ou os recursos do jogo.\n");
-        if (font) al_destroy_font(font);
-        if (timer) al_destroy_timer(timer);
-        if (queue) al_destroy_event_queue(queue);
-        if (display) al_destroy_display(display);
-        return 1;
-    }
+    ALLEGRO_DISPLAY* janela = NULL;
+    ALLEGRO_BITMAP* bitmap_Tela1 = NULL;
+    ALLEGRO_FONT* font = NULL;
 
-    al_set_window_title(display, "Defesa Matematica Espacial");
-    al_register_event_source(queue, al_get_display_event_source(display));
-    al_register_event_source(queue, al_get_keyboard_event_source());
-    al_register_event_source(queue, al_get_mouse_event_source());
-    al_register_event_source(queue, al_get_timer_event_source(timer));
+    ALLEGRO_EVENT_QUEUE* fila = NULL;
+    ALLEGRO_TIMER* timer = NULL;
 
-    srand((unsigned int)time(NULL));
+    bool executando = true;
+    bool redesenhar = true;
 
-    // Estado inicial da partida: nave, vidas, pontos, pergunta e inimigos.
+    int telaAtual = MENU;
+
+    float mouseX = 0;
+    float mouseY = 0;
+
+    // Variaveis do Jogo (Fase)
     Enemy enemies[ENEMIES];
     Shot shot = { 0 };
     bool keys[ALLEGRO_KEY_MAX] = { false };
     char question[128];
     char scratchpad[16] = "";
     int scratch_length = 0;
-    int correct, score = 0, lives = 3;
-    float ship_y = HEIGHT / 2.0f;
+    int correct = 0, score = 0, lives = 3;
+    float ship_y = ALTURA / 2.0f;
+    bool game_over = false;
+
+    // =================================
+    // INICIALIZACAO DO ALLEGRO
+    // =================================
+
+    if (!al_init())
+    {
+        printf("Erro ao inicializar Allegro!\n");
+        return -1;
+    }
+
+    if (!al_init_image_addon())
+    {
+        printf("Erro no addon de imagem!\n");
+        return -1;
+    }
+
+    if (!al_init_primitives_addon())
+    {
+        printf("Erro no addon de primitivas!\n");
+        return -1;
+    }
+
+    if (!al_init_font_addon() || !al_init_ttf_addon())
+    {
+        printf("Erro nos addons de fontes!\n");
+        return -1;
+    }
+
+    al_install_mouse();
+    al_install_keyboard();
+
+    srand((unsigned int)time(NULL));
+
+    // =================================
+    // CARREGAR RECURSOS (MENU E FONTES)
+    // =================================
+
+    bitmap_Tela1 = al_load_bitmap("menu.png");
+
+    if (!bitmap_Tela1)
+    {
+        printf("ERRO: nao foi possivel carregar menu.png!\n");
+        printf("Verifique se menu.png esta na pasta correta.\n");
+        return -1;
+    }
+
+    font = al_load_ttf_font("C:\\Windows\\Fonts\\arial.ttf", 36, 0);
+    if (!font) {
+        font = al_create_builtin_font(); // Fallback caso a fonte do Windows nao abra
+    }
+
+    // =================================
+    // CRIAR JANELA
+    // =================================
+
+    janela = al_create_display(LARGURA, ALTURA);
+
+    if (!janela)
+    {
+        printf("Erro ao criar janela!\n");
+        al_destroy_bitmap(bitmap_Tela1);
+        if (font) al_destroy_font(font);
+        return -1;
+    }
+
+    al_set_window_title(janela, "ASTROMATH");
+
+    // =================================
+    // FILA DE EVENTOS E TIMER
+    // =================================
+
+    fila = al_create_event_queue();
+    timer = al_create_timer(1.0 / 60.0);
+
+    if (!fila || !timer)
+    {
+        printf("Erro ao criar fila ou timer!\n");
+
+        if (timer) al_destroy_timer(timer);
+        if (fila) al_destroy_event_queue(fila);
+        al_destroy_bitmap(bitmap_Tela1);
+        if (font) al_destroy_font(font);
+        al_destroy_display(janela);
+
+        return -1;
+    }
+
+    al_register_event_source(fila, al_get_display_event_source(janela));
+    al_register_event_source(fila, al_get_mouse_event_source());
+    al_register_event_source(fila, al_get_keyboard_event_source());
+    al_register_event_source(fila, al_get_timer_event_source(timer));
+
+    // Inicializa a primeira questao do jogo
     new_question(question, &correct, enemies);
-    bool running = true, game_over = false, redraw = true;
+
     al_start_timer(timer);
 
-    // Loop principal: recebe comandos, atualiza o jogo e redesenha a tela.
-    while (running) {
-        ALLEGRO_EVENT event;
-        al_wait_for_event(queue, &event);
+    // =================================
+    // LOOP PRINCIPAL
+    // =================================
 
-        if (event.type == ALLEGRO_EVENT_DISPLAY_CLOSE) running = false;
+    while (executando)
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(fila, &evento);
 
-        // Teclado: ESC fecha o jogo; R reinicia quando a partida termina.
-        if (event.type == ALLEGRO_EVENT_KEY_DOWN) {
-            int key = event.keyboard.keycode;
-            keys[key] = true;
-            if (key == ALLEGRO_KEY_ESCAPE) running = false;
-            if (game_over && key == ALLEGRO_KEY_R) {
+        // Fechar janela
+        if (evento.type == ALLEGRO_EVENT_DISPLAY_CLOSE)
+        {
+            executando = false;
+        }
+
+        // Atualizar posicao do mouse
+        if (evento.type == ALLEGRO_EVENT_MOUSE_AXES ||
+            evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN)
+        {
+            mouseX = evento.mouse.x;
+            mouseY = evento.mouse.y;
+        }
+
+        // =================================
+        // EVENTOS DO MENU
+        // =================================
+
+        if (evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN &&
+            evento.mouse.button == 1 &&
+            telaAtual == MENU)
+        {
+            // JOGAR
+            if (mouseX >= 650 && mouseX <= 1270 &&
+                mouseY >= 500 && mouseY <= 610)
+            {
+                telaAtual = JOGO;
+                // Reseta a partida ao entrar no jogo
                 score = 0;
                 lives = 3;
                 game_over = false;
-                ship_y = HEIGHT / 2.0f;
+                ship_y = ALTURA / 2.0f;
                 shot.active = false;
                 scratch_length = 0;
                 scratchpad[0] = '\0';
                 new_question(question, &correct, enemies);
-                redraw = true;
             }
 
-        }
-
-        // Rascunho: recebe os caracteres digitados (numeros e operadores).
-        if (event.type == ALLEGRO_EVENT_KEY_CHAR && !game_over) {
-            int key = event.keyboard.keycode;
-            int character = event.keyboard.unichar;
-
-            if (key == ALLEGRO_KEY_BACKSPACE) {
-                if (scratch_length > 0) {
-                    scratchpad[--scratch_length] = '\0';
-                    redraw = true;
-                }
+            // CONFIGURACOES
+            else if (mouseX >= 600 && mouseX <= 1320 &&
+                mouseX >= 600 && mouseY >= 600 && mouseY <= 710)
+            {
+                telaAtual = CONFIGURACOES;
             }
-            else if (key == ALLEGRO_KEY_C) {
-                scratch_length = 0;
-                scratchpad[0] = '\0';
-                redraw = true;
+
+            // RANKING
+            else if (mouseX >= 650 && mouseX <= 1270 &&
+                mouseY >= 700 && mouseY <= 810)
+            {
+                telaAtual = RANKING;
             }
-            else if (((character >= '0' && character <= '9') ||
-                character == '+' || character == '=' || character == '-' ||
-                character == 'x' || character == 'X') &&
-                scratch_length < (int)sizeof(scratchpad) - 1) {
-                if (character == 'X') character = 'x';
-                scratchpad[scratch_length++] = (char)character;
-                scratchpad[scratch_length] = '\0';
-                redraw = true;
+
+            // SAIR
+            else if (mouseX >= 650 && mouseX <= 1270 &&
+                mouseY >= 800 && mouseY <= 910)
+            {
+                executando = false;
             }
         }
 
-        // Mouse: clicar em uma caixa de resposta dispara contra aquele inimigo.
-        if (event.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && !game_over && event.mouse.button == 1) {
-            for (int i = 0; i < ENEMIES; ++i) {
-                float y = lane_y(i);
-                if (event.mouse.x >= 1370 && event.mouse.x <= 1810 &&
-                    event.mouse.y >= y - 55 && event.mouse.y <= y + 55) {
-                    fire_at(i, ship_y, &shot);
-                    redraw = true;
-                    break;
-                }
-            }
-        }
-        if (event.type == ALLEGRO_EVENT_KEY_UP) {
-            keys[event.keyboard.keycode] = false;
-        }
-        if (event.type == ALLEGRO_EVENT_TIMER) redraw = true;
+        // =================================
+        // EVENTOS DA FASE (JOGO)
+        // =================================
 
-        // Atualizacao: move a nave e os tiros; acertos dao pontos, erros tiram vida.
-        if (event.type == ALLEGRO_EVENT_TIMER && !game_over) {
-            if (keys[ALLEGRO_KEY_UP]) ship_y -= 4.0f;
-            if (keys[ALLEGRO_KEY_DOWN]) ship_y += 4.0f;
-            if (ship_y < 180.0f) ship_y = 180.0f;
-            if (ship_y > HEIGHT - 150.0f) ship_y = HEIGHT - 150.0f;
+        if (telaAtual == JOGO) {
+            if (evento.type == ALLEGRO_EVENT_KEY_DOWN) {
+                int key = evento.keyboard.keycode;
+                keys[key] = true;
 
-            if (shot.active) {
-                shot.x += shot.vx;
-                shot.y += shot.vy;
-                float target_y = lane_y(shot.target);
-                float dx = shot.x - ENEMY_X;
-                float dy = shot.y - target_y;
-                if (dx * dx + dy * dy <= 34.0f * 34.0f) {
-                    int choice = shot.target;
+                if (game_over && key == ALLEGRO_KEY_R) {
+                    score = 0;
+                    lives = 3;
+                    game_over = false;
+                    ship_y = ALTURA / 2.0f;
                     shot.active = false;
-                    if (choice == correct) {
-                        score += 100 + shot.bonus;
-                        scratch_length = 0;
-                        scratchpad[0] = '\0';
-                        new_question(question, &correct, enemies);
-                    }
-                    else {
-                        --lives;
-                        if (lives <= 0) game_over = true;
+                    scratch_length = 0;
+                    scratchpad[0] = '\0';
+                    new_question(question, &correct, enemies);
+                    redesenhar = true;
+                }
+            }
+
+            if (evento.type == ALLEGRO_EVENT_KEY_UP) {
+                keys[evento.keyboard.keycode] = false;
+            }
+
+            // Rascunho do teclado
+            if (evento.type == ALLEGRO_EVENT_KEY_CHAR && !game_over) {
+                int key = evento.keyboard.keycode;
+                int character = evento.keyboard.unichar;
+
+                if (key == ALLEGRO_KEY_BACKSPACE) {
+                    if (scratch_length > 0) {
+                        scratchpad[--scratch_length] = '\0';
+                        redesenhar = true;
                     }
                 }
-                else if (shot.x > WIDTH || shot.y < 0 || shot.y > HEIGHT) {
-                    shot.active = false;
+                else if (key == ALLEGRO_KEY_C) {
+                    scratch_length = 0;
+                    scratchpad[0] = '\0';
+                    redesenhar = true;
+                }
+                else if (((character >= '0' && character <= '9') ||
+                    character == '+' || character == '=' || character == '-' ||
+                    character == 'x' || character == 'X') &&
+                    scratch_length < (int)sizeof(scratchpad) - 1) {
+                    if (character == 'X') character = 'x';
+                    scratchpad[scratch_length++] = (char)character;
+                    scratchpad[scratch_length] = '\0';
+                    redesenhar = true;
+                }
+            }
+
+            // Clique nos inimigos para disparar
+            if (evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && !game_over && evento.mouse.button == 1) {
+                for (int i = 0; i < ENEMIES; ++i) {
+                    float y = lane_y(i);
+                    if (evento.mouse.x >= 1370 && evento.mouse.x <= 1810 &&
+                        evento.mouse.y >= y - 55 && evento.mouse.y <= y + 55) {
+                        fire_at(i, ship_y, &shot);
+                        redesenhar = true;
+                        break;
+                    }
                 }
             }
         }
 
-        // Desenho: mostra o HUD, a pergunta, a nave, os inimigos e a tela final.
-        if (redraw && al_is_event_queue_empty(queue)) {
-            al_clear_to_color(al_map_rgb(8, 12, 35));
-            ALLEGRO_COLOR white = al_map_rgb(240, 245, 255);
-            ALLEGRO_COLOR red = al_map_rgb(245, 65, 75);
-            ALLEGRO_COLOR cyan = al_map_rgb(70, 220, 255);
+        // =================================
+        // TECLA ESC (GERENCIAMENTO DE TELAS)
+        // =================================
 
-            // Header HUD
-            draw_textf(font, red, 55, 55, 0, "VIDAS: %d", lives);
-            draw_textf(font, cyan, WIDTH - 55, 55, ALLEGRO_ALIGN_RIGHT, "PONTOS: %d", score);
-            draw_text(font, white, WIDTH / 2, 65, ALLEGRO_ALIGN_CENTRE, "ASTROMATH");
-            draw_text(font, white, WIDTH / 2, 190, ALLEGRO_ALIGN_CENTRE, question);
-
-            // Area para anotar numeros enquanto resolve a conta.
-            al_draw_rounded_rectangle(560, 270, 1360, 360, 18, 18, cyan, 3);
-            char scratch_text[64];
-            if (scratch_length == 0) {
-                snprintf(scratch_text, sizeof(scratch_text), "RASCUNHO:");
-            }
-            else {
-                snprintf(scratch_text, sizeof(scratch_text), "RASCUNHO: %s", scratchpad);
-            }
-            draw_text(font, white, WIDTH / 2, 295, ALLEGRO_ALIGN_CENTRE, scratch_text);
-
-            // Nave apontada para a direita.
-            al_draw_filled_triangle(SHIP_NOSE_X, ship_y, SHIP_NOSE_X - 90, ship_y - 55,
-                SHIP_NOSE_X - 90, ship_y + 55, cyan);
-            draw_text(font, white, 160, ship_y + 72, ALLEGRO_ALIGN_CENTRE, "NAVE");
-
-            // Quatro inimigos em faixas verticais, cada um com uma resposta.
-            for (int i = 0; i < ENEMIES; ++i) {
-                float y = lane_y(i);
-                al_draw_filled_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22,
-                    al_map_rgb(65, 20, 38));
-                al_draw_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22, red, 4);
-                al_draw_filled_circle(ENEMY_X, y, 34, red);
-                al_draw_filled_circle(ENEMY_X - 12, y - 8, 7, al_map_rgb(255, 220, 220));
-                char answer[64];
-                snprintf(answer, sizeof(answer), "%d", enemies[i].answer);
-                draw_text(font, white, 1590, y - 18, ALLEGRO_ALIGN_CENTRE, answer);
-            }
-            if (shot.active) {
-                al_draw_filled_circle(shot.x, shot.y, 8, al_map_rgb(255, 235, 90));
-                if (shot.bonus > 0) {
-                    draw_text(font, cyan, WIDTH / 2, 850, ALLEGRO_ALIGN_CENTRE,
-                        "TIRO ALINHADO: +50 SE ACERTAR");
+        if (evento.type == ALLEGRO_EVENT_KEY_DOWN)
+        {
+            if (evento.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
+            {
+                if (telaAtual != MENU)
+                {
+                    telaAtual = MENU; // Volta para o menu principal
+                }
+                else
+                {
+                    executando = false; // Sai do jogo se estiver no menu
                 }
             }
-            if (game_over) {
-                al_draw_filled_rounded_rectangle(560, 390, 1360, 650, 24, 24, al_map_rgb(16, 20, 48));
-                draw_text(font, red, WIDTH / 2, 425, ALLEGRO_ALIGN_CENTRE, "FIM DE JOGO");
-                draw_textf(font, white, WIDTH / 2, 500, ALLEGRO_ALIGN_CENTRE, "Pontuacao final: %d", score);
-                draw_text(font, white, WIDTH / 2, 570, ALLEGRO_ALIGN_CENTRE, "Pressione R para jogar novamente");
+        }
+
+        // Atualizacao do timer
+        if (evento.type == ALLEGRO_EVENT_TIMER)
+        {
+            redesenhar = true;
+
+            // Logica de movimento da fase se estivermos jogando
+            if (telaAtual == JOGO && !game_over) {
+                if (keys[ALLEGRO_KEY_UP]) ship_y -= 4.0f;
+                if (keys[ALLEGRO_KEY_DOWN]) ship_y += 4.0f;
+                if (ship_y < 180.0f) ship_y = 180.0f;
+                if (ship_y > ALTURA - 150.0f) ship_y = ALTURA - 150.0f;
+
+                if (shot.active) {
+                    shot.x += shot.vx;
+                    shot.y += shot.vy;
+                    float target_y = lane_y(shot.target);
+                    float dx = shot.x - ENEMY_X;
+                    float dy = shot.y - target_y;
+                    if (dx * dx + dy * dy <= 34.0f * 34.0f) {
+                        int choice = shot.target;
+                        shot.active = false;
+                        if (choice == correct) {
+                            score += 100 + shot.bonus;
+                            scratch_length = 0;
+                            scratchpad[0] = '\0';
+                            new_question(question, &correct, enemies);
+                        }
+                        else {
+                            --lives;
+                            if (lives <= 0) game_over = true;
+                        }
+                    }
+                    else if (shot.x > LARGURA || shot.y < 0 || shot.y > ALTURA) {
+                        shot.active = false;
+                    }
+                }
             }
+        }
+
+        // =================================
+        // RENDERIZACAO DAS TELAS
+        // =================================
+
+        if (redesenhar && al_is_event_queue_empty(fila))
+        {
+            redesenhar = false;
+
+            al_clear_to_color(al_map_rgb(0, 0, 20));
+
+            // =================================
+            // MENU PRINCIPAL
+            // =================================
+
+            if (telaAtual == MENU)
+            {
+                al_draw_scaled_bitmap(
+                    bitmap_Tela1,
+                    0, 0,
+                    al_get_bitmap_width(bitmap_Tela1),
+                    al_get_bitmap_height(bitmap_Tela1),
+                    0, 0,
+                    LARGURA, ALTURA,
+                    0
+                );
+
+                // EFEITO AO PASSAR O MOUSE NO MENU
+                if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 500 && mouseY <= 610)
+                {
+                    al_draw_filled_rectangle(650, 500, 1270, 610, al_map_rgba(50, 120, 255, 45));
+                }
+                else if (mouseX >= 600 && mouseX <= 1320 && mouseY >= 600 && mouseY <= 710)
+                {
+                    al_draw_filled_rectangle(600, 600, 1320, 710, al_map_rgba(50, 120, 255, 45));
+                }
+                else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 700 && mouseY <= 810)
+                {
+                    al_draw_filled_rectangle(650, 700, 1270, 810, al_map_rgba(50, 120, 255, 45));
+                }
+                else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 800 && mouseY <= 910)
+                {
+                    al_draw_filled_rectangle(650, 800, 1270, 910, al_map_rgba(50, 120, 255, 45));
+                }
+            }
+
+            // =================================
+            // TELA DO JOGO (FASE)
+            // =================================
+
+            else if (telaAtual == JOGO)
+            {
+                al_clear_to_color(al_map_rgb(8, 12, 35));
+                ALLEGRO_COLOR white = al_map_rgb(240, 245, 255);
+                ALLEGRO_COLOR red = al_map_rgb(245, 65, 75);
+                ALLEGRO_COLOR cyan = al_map_rgb(70, 220, 255);
+
+                // Header HUD
+                draw_textf(font, red, 55, 55, 0, "VIDAS: %d", lives);
+                draw_textf(font, cyan, LARGURA - 55, 55, ALLEGRO_ALIGN_RIGHT, "PONTOS: %d", score);
+                draw_text(font, white, LARGURA / 2, 65, ALLEGRO_ALIGN_CENTRE, "ASTROMATH");
+                draw_text(font, white, LARGURA / 2, 190, ALLEGRO_ALIGN_CENTRE, question);
+
+                // Area para anotar numeros (rascunho)
+                al_draw_rounded_rectangle(560, 270, 1360, 360, 18, 18, cyan, 3);
+                char scratch_text[64];
+                if (scratch_length == 0) {
+                    snprintf(scratch_text, sizeof(scratch_text), "RASCUNHO:");
+                }
+                else {
+                    snprintf(scratch_text, sizeof(scratch_text), "RASCUNHO: %s", scratchpad);
+                }
+                draw_text(font, white, LARGURA / 2, 295, ALLEGRO_ALIGN_CENTRE, scratch_text);
+
+                // Nave
+                al_draw_filled_triangle(SHIP_NOSE_X, ship_y, SHIP_NOSE_X - 90, ship_y - 55,
+                    SHIP_NOSE_X - 90, ship_y + 55, cyan);
+                draw_text(font, white, 160, ship_y + 72, ALLEGRO_ALIGN_CENTRE, "NAVE");
+
+                // Inimigos e respostas
+                for (int i = 0; i < ENEMIES; ++i) {
+                    float y = lane_y(i);
+                    al_draw_filled_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22,
+                        al_map_rgb(65, 20, 38));
+                    al_draw_rounded_rectangle(1370, y - 55, 1810, y + 55, 22, 22, red, 4);
+                    al_draw_filled_circle(ENEMY_X, y, 34, red);
+                    al_draw_filled_circle(ENEMY_X - 12, y - 8, 7, al_map_rgb(255, 220, 220));
+                    char answer[64];
+                    snprintf(answer, sizeof(answer), "%d", enemies[i].answer);
+                    draw_text(font, white, 1590, y - 18, ALLEGRO_ALIGN_CENTRE, answer);
+                }
+
+                // Tiro
+                if (shot.active) {
+                    al_draw_filled_circle(shot.x, shot.y, 8, al_map_rgb(255, 235, 90));
+                    if (shot.bonus > 0) {
+                        draw_text(font, cyan, LARGURA / 2, 850, ALLEGRO_ALIGN_CENTRE,
+                            "TIRO ALINHADO: +50 SE ACERTAR");
+                    }
+                }
+
+                // Game Over da fase
+                if (game_over) {
+                    al_draw_filled_rounded_rectangle(560, 390, 1360, 650, 24, 24, al_map_rgb(16, 20, 48));
+                    draw_text(font, red, LARGURA / 2, 425, ALLEGRO_ALIGN_CENTRE, "FIM DE JOGO");
+                    draw_textf(font, white, LARGURA / 2, 500, ALLEGRO_ALIGN_CENTRE, "Pontuacao final: %d", score);
+                    draw_text(font, white, LARGURA / 2, 570, ALLEGRO_ALIGN_CENTRE, "Pressione R para jogar novamente ou ESC para o Menu");
+                }
+            }
+
+            // =================================
+            // CONFIGURACOES
+            // =================================
+
+            else if (telaAtual == CONFIGURACOES)
+            {
+                al_clear_to_color(al_map_rgb(0, 0, 30));
+                draw_text(font, al_map_rgb(255, 255, 255), LARGURA / 2, ALTURA / 2 - 30, ALLEGRO_ALIGN_CENTRE, "TELA DE CONFIGURACOES");
+                draw_text(font, al_map_rgb(150, 150, 150), LARGURA / 2, ALTURA / 2 + 30, ALLEGRO_ALIGN_CENTRE, "Pressione ESC para voltar ao menu");
+            }
+
+            // =================================
+            // RANKING
+            // =================================
+
+            else if (telaAtual == RANKING)
+            {
+                al_clear_to_color(al_map_rgb(0, 0, 30));
+                draw_text(font, al_map_rgb(255, 255, 255), LARGURA / 2, ALTURA / 2 - 30, ALLEGRO_ALIGN_CENTRE, "TELA DE RANKING");
+                draw_text(font, al_map_rgb(150, 150, 150), LARGURA / 2, ALTURA / 2 + 30, ALLEGRO_ALIGN_CENTRE, "Pressione ESC para voltar ao menu");
+            }
+
             al_flip_display();
-            redraw = false;
         }
     }
 
-    // Libera os recursos do Allegro antes de encerrar o programa.
-    al_destroy_font(font);
+    // =================================
+    // LIBERAR MEMORIA
+    // =================================
+
+    al_destroy_bitmap(bitmap_Tela1);
+    if (font) al_destroy_font(font);
     al_destroy_timer(timer);
-    al_destroy_event_queue(queue);
-    al_destroy_display(display);
+    al_destroy_event_queue(fila);
+    al_destroy_display(janela);
+
     return 0;
 }
