@@ -156,6 +156,7 @@ int main(void)
 
     ALLEGRO_DISPLAY* janela = NULL;
     ALLEGRO_BITMAP* bitmap_Tela1 = NULL;
+    ALLEGRO_BITMAP* bitmap_Fase = NULL; // <--- Bitmap para o background da fase
     ALLEGRO_FONT* font = NULL;
 
     ALLEGRO_EVENT_QUEUE* fila = NULL;
@@ -214,22 +215,30 @@ int main(void)
     srand((unsigned int)time(NULL));
 
     // =================================
-    // CARREGAR RECURSOS (MENU E FONTES)
+    // CARREGAR RECURSOS (BITMAPS E FONTES)
     // =================================
 
     bitmap_Tela1 = al_load_bitmap("menu.png");
-
     if (!bitmap_Tela1)
     {
         printf("ERRO: nao foi possivel carregar menu.png!\n");
-        printf("Verifique se menu.png esta na pasta correta.\n");
         return -1;
+    }
+
+    // CARREGAR BACKGROUND DA FASE (substitua "fase.png" pelo nome da sua imagem)
+    bitmap_Fase = al_load_bitmap("espaco.png");
+    if (!bitmap_Fase)
+    {
+        printf("AVISO: nao foi possivel carregar espaco.png! Usando cor solida de fundo.\n");
     }
 
     font = al_load_ttf_font("C:\\Windows\\Fonts\\arial.ttf", 36, 0);
     if (!font) {
-        font = al_create_builtin_font(); // Fallback caso a fonte do Windows nao abra
+        font = al_create_builtin_font();
     }
+
+    // CARREGAR JOGADOR DA FASE (substitua "fase.png" pelo nome da sua imagem)
+
 
     // =================================
     // CRIAR JANELA
@@ -241,6 +250,7 @@ int main(void)
     {
         printf("Erro ao criar janela!\n");
         al_destroy_bitmap(bitmap_Tela1);
+        if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase);
         if (font) al_destroy_font(font);
         return -1;
     }
@@ -261,6 +271,7 @@ int main(void)
         if (timer) al_destroy_timer(timer);
         if (fila) al_destroy_event_queue(fila);
         al_destroy_bitmap(bitmap_Tela1);
+        if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase);
         if (font) al_destroy_font(font);
         al_destroy_display(janela);
 
@@ -272,9 +283,7 @@ int main(void)
     al_register_event_source(fila, al_get_keyboard_event_source());
     al_register_event_source(fila, al_get_timer_event_source(timer));
 
-    // Inicializa a primeira questao do jogo
     new_question(question, &correct, enemies);
-
     al_start_timer(timer);
 
     // =================================
@@ -286,13 +295,11 @@ int main(void)
         ALLEGRO_EVENT evento;
         al_wait_for_event(fila, &evento);
 
-        // Fechar janela
         if (evento.type == ALLEGRO_EVENT_DISPLAY_CLOSE)
         {
             executando = false;
         }
 
-        // Atualizar posicao do mouse
         if (evento.type == ALLEGRO_EVENT_MOUSE_AXES ||
             evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN)
         {
@@ -313,7 +320,6 @@ int main(void)
                 mouseY >= 500 && mouseY <= 610)
             {
                 telaAtual = JOGO;
-                // Reseta a partida ao entrar no jogo
                 score = 0;
                 lives = 3;
                 game_over = false;
@@ -323,21 +329,18 @@ int main(void)
                 scratchpad[0] = '\0';
                 new_question(question, &correct, enemies);
             }
-
             // CONFIGURACOES
             else if (mouseX >= 600 && mouseX <= 1320 &&
-                mouseX >= 600 && mouseY >= 600 && mouseY <= 710)
+                mouseY >= 600 && mouseY <= 710)
             {
                 telaAtual = CONFIGURACOES;
             }
-
             // RANKING
             else if (mouseX >= 650 && mouseX <= 1270 &&
                 mouseY >= 700 && mouseY <= 810)
             {
                 telaAtual = RANKING;
             }
-
             // SAIR
             else if (mouseX >= 650 && mouseX <= 1270 &&
                 mouseY >= 800 && mouseY <= 910)
@@ -372,7 +375,6 @@ int main(void)
                 keys[evento.keyboard.keycode] = false;
             }
 
-            // Rascunho do teclado
             if (evento.type == ALLEGRO_EVENT_KEY_CHAR && !game_over) {
                 int key = evento.keyboard.keycode;
                 int character = evento.keyboard.unichar;
@@ -399,7 +401,6 @@ int main(void)
                 }
             }
 
-            // Clique nos inimigos para disparar
             if (evento.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN && !game_over && evento.mouse.button == 1) {
                 for (int i = 0; i < ENEMIES; ++i) {
                     float y = lane_y(i);
@@ -413,21 +414,18 @@ int main(void)
             }
         }
 
-        // =================================
-        // TECLA ESC (GERENCIAMENTO DE TELAS)
-        // =================================
-
+        // TECLA ESC
         if (evento.type == ALLEGRO_EVENT_KEY_DOWN)
         {
             if (evento.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
             {
                 if (telaAtual != MENU)
                 {
-                    telaAtual = MENU; // Volta para o menu principal
+                    telaAtual = MENU;
                 }
                 else
                 {
-                    executando = false; // Sai do jogo se estiver no menu
+                    executando = false;
                 }
             }
         }
@@ -437,7 +435,6 @@ int main(void)
         {
             redesenhar = true;
 
-            // Logica de movimento da fase se estivermos jogando
             if (telaAtual == JOGO && !game_over) {
                 if (keys[ALLEGRO_KEY_UP]) ship_y -= 4.0f;
                 if (keys[ALLEGRO_KEY_DOWN]) ship_y += 4.0f;
@@ -472,7 +469,7 @@ int main(void)
         }
 
         // =================================
-        // RENDERIZACAO DAS TELAS
+        // RENDERIZACAO
         // =================================
 
         if (redesenhar && al_is_event_queue_empty(fila))
@@ -497,32 +494,39 @@ int main(void)
                     0
                 );
 
-                // EFEITO AO PASSAR O MOUSE NO MENU
                 if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 500 && mouseY <= 610)
-                {
                     al_draw_filled_rectangle(650, 500, 1270, 610, al_map_rgba(50, 120, 255, 45));
-                }
                 else if (mouseX >= 600 && mouseX <= 1320 && mouseY >= 600 && mouseY <= 710)
-                {
                     al_draw_filled_rectangle(600, 600, 1320, 710, al_map_rgba(50, 120, 255, 45));
-                }
                 else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 700 && mouseY <= 810)
-                {
                     al_draw_filled_rectangle(650, 700, 1270, 810, al_map_rgba(50, 120, 255, 45));
-                }
                 else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 800 && mouseY <= 910)
-                {
                     al_draw_filled_rectangle(650, 800, 1270, 910, al_map_rgba(50, 120, 255, 45));
-                }
             }
 
             // =================================
-            // TELA DO JOGO (FASE)
+            // TELA DO JOGO (FASE COM BACKGROUND)
             // =================================
 
             else if (telaAtual == JOGO)
             {
-                al_clear_to_color(al_map_rgb(8, 12, 35));
+                // DESENHAR O BACKGROUND DA FASE
+                if (bitmap_Fase) {
+                    al_draw_scaled_bitmap(
+                        bitmap_Fase,
+                        0, 0,
+                        al_get_bitmap_width(bitmap_Fase),
+                        al_get_bitmap_height(bitmap_Fase),
+                        0, 0,
+                        LARGURA, ALTURA,
+                        0
+                    );
+                }
+                else {
+                    // Fallback caso a imagem "fase.png" nao seja encontrada
+                    al_clear_to_color(al_map_rgb(8, 12, 35));
+                }
+
                 ALLEGRO_COLOR white = al_map_rgb(240, 245, 255);
                 ALLEGRO_COLOR red = al_map_rgb(245, 65, 75);
                 ALLEGRO_COLOR cyan = al_map_rgb(70, 220, 255);
@@ -580,10 +584,7 @@ int main(void)
                 }
             }
 
-            // =================================
             // CONFIGURACOES
-            // =================================
-
             else if (telaAtual == CONFIGURACOES)
             {
                 al_clear_to_color(al_map_rgb(0, 0, 30));
@@ -591,10 +592,7 @@ int main(void)
                 draw_text(font, al_map_rgb(150, 150, 150), LARGURA / 2, ALTURA / 2 + 30, ALLEGRO_ALIGN_CENTRE, "Pressione ESC para voltar ao menu");
             }
 
-            // =================================
             // RANKING
-            // =================================
-
             else if (telaAtual == RANKING)
             {
                 al_clear_to_color(al_map_rgb(0, 0, 30));
@@ -611,6 +609,7 @@ int main(void)
     // =================================
 
     al_destroy_bitmap(bitmap_Tela1);
+    if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase); // <--- Liberar o bitmap da fase
     if (font) al_destroy_font(font);
     al_destroy_timer(timer);
     al_destroy_event_queue(fila);
