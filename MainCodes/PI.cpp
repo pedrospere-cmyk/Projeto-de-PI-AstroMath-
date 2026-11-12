@@ -156,7 +156,8 @@ int main(void)
 
     ALLEGRO_DISPLAY* janela = NULL;
     ALLEGRO_BITMAP* bitmap_Tela1 = NULL;
-    ALLEGRO_BITMAP* bitmap_Fase = NULL; // <--- Bitmap para o background da fase
+    ALLEGRO_BITMAP* bitmap_Fase = NULL;
+    ALLEGRO_BITMAP* bitmap_Jogador = NULL; // <--- Spritesheet animada do jogador
     ALLEGRO_FONT* font = NULL;
 
     ALLEGRO_EVENT_QUEUE* fila = NULL;
@@ -169,6 +170,11 @@ int main(void)
 
     float mouseX = 0;
     float mouseY = 0;
+
+    // Variaveis da Animacao do Jogador
+    int frameAtual = 0;
+    int contadorAnimacao = 0;
+    int totalFrames = 4; // A imagem possui 4 quadros na horizontal
 
     // Variaveis do Jogo (Fase)
     Enemy enemies[ENEMIES];
@@ -215,7 +221,7 @@ int main(void)
     srand((unsigned int)time(NULL));
 
     // =================================
-    // CARREGAR RECURSOS (BITMAPS E FONTES)
+    // CARREGAR RECURSOS
     // =================================
 
     bitmap_Tela1 = al_load_bitmap("menu.png");
@@ -225,20 +231,24 @@ int main(void)
         return -1;
     }
 
-    // CARREGAR BACKGROUND DA FASE (substitua "fase.png" pelo nome da sua imagem)
-    bitmap_Fase = al_load_bitmap("espaco.png");
+    bitmap_Fase = al_load_bitmap("fase.png");
     if (!bitmap_Fase)
     {
-        printf("AVISO: nao foi possivel carregar espaco.png! Usando cor solida de fundo.\n");
+        printf("AVISO: nao foi possivel carregar fase.png! Usando cor solida.\n");
+    }
+
+    // CARREGAR SPRITESHEET DO JOGADOR
+    bitmap_Jogador = al_load_bitmap("jogador.png");
+    if (!bitmap_Jogador)
+    {
+        printf("ERRO: nao foi possivel carregar jogador.png!\n");
+        return -1;
     }
 
     font = al_load_ttf_font("C:\\Windows\\Fonts\\arial.ttf", 36, 0);
     if (!font) {
         font = al_create_builtin_font();
     }
-
-    // CARREGAR JOGADOR DA FASE (substitua "fase.png" pelo nome da sua imagem)
-
 
     // =================================
     // CRIAR JANELA
@@ -251,6 +261,7 @@ int main(void)
         printf("Erro ao criar janela!\n");
         al_destroy_bitmap(bitmap_Tela1);
         if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase);
+        if (bitmap_Jogador) al_destroy_bitmap(bitmap_Jogador);
         if (font) al_destroy_font(font);
         return -1;
     }
@@ -272,6 +283,7 @@ int main(void)
         if (fila) al_destroy_event_queue(fila);
         al_destroy_bitmap(bitmap_Tela1);
         if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase);
+        if (bitmap_Jogador) al_destroy_bitmap(bitmap_Jogador);
         if (font) al_destroy_font(font);
         al_destroy_display(janela);
 
@@ -315,9 +327,7 @@ int main(void)
             evento.mouse.button == 1 &&
             telaAtual == MENU)
         {
-            // JOGAR
-            if (mouseX >= 650 && mouseX <= 1270 &&
-                mouseY >= 500 && mouseY <= 610)
+            if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 500 && mouseY <= 610)
             {
                 telaAtual = JOGO;
                 score = 0;
@@ -329,21 +339,15 @@ int main(void)
                 scratchpad[0] = '\0';
                 new_question(question, &correct, enemies);
             }
-            // CONFIGURACOES
-            else if (mouseX >= 600 && mouseX <= 1320 &&
-                mouseY >= 600 && mouseY <= 710)
+            else if (mouseX >= 600 && mouseX <= 1320 && mouseY >= 600 && mouseY <= 710)
             {
                 telaAtual = CONFIGURACOES;
             }
-            // RANKING
-            else if (mouseX >= 650 && mouseX <= 1270 &&
-                mouseY >= 700 && mouseY <= 810)
+            else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 700 && mouseY <= 810)
             {
                 telaAtual = RANKING;
             }
-            // SAIR
-            else if (mouseX >= 650 && mouseX <= 1270 &&
-                mouseY >= 800 && mouseY <= 910)
+            else if (mouseX >= 650 && mouseX <= 1270 && mouseY >= 800 && mouseY <= 910)
             {
                 executando = false;
             }
@@ -435,6 +439,15 @@ int main(void)
         {
             redesenhar = true;
 
+            // Atualizar animacao da nave (idle) a cada 8 ticks
+            if (telaAtual == JOGO) {
+                contadorAnimacao++;
+                if (contadorAnimacao >= 8) {
+                    frameAtual = (frameAtual + 1) % totalFrames;
+                    contadorAnimacao = 0;
+                }
+            }
+
             if (telaAtual == JOGO && !game_over) {
                 if (keys[ALLEGRO_KEY_UP]) ship_y -= 4.0f;
                 if (keys[ALLEGRO_KEY_DOWN]) ship_y += 4.0f;
@@ -505,12 +518,12 @@ int main(void)
             }
 
             // =================================
-            // TELA DO JOGO (FASE COM BACKGROUND)
+            // TELA DO JOGO (FASE COM BACKGROUND E NAVE ANIMADA)
             // =================================
 
             else if (telaAtual == JOGO)
             {
-                // DESENHAR O BACKGROUND DA FASE
+                // Background da fase
                 if (bitmap_Fase) {
                     al_draw_scaled_bitmap(
                         bitmap_Fase,
@@ -523,7 +536,6 @@ int main(void)
                     );
                 }
                 else {
-                    // Fallback caso a imagem "fase.png" nao seja encontrada
                     al_clear_to_color(al_map_rgb(8, 12, 35));
                 }
 
@@ -537,7 +549,7 @@ int main(void)
                 draw_text(font, white, LARGURA / 2, 65, ALLEGRO_ALIGN_CENTRE, "ASTROMATH");
                 draw_text(font, white, LARGURA / 2, 190, ALLEGRO_ALIGN_CENTRE, question);
 
-                // Area para anotar numeros (rascunho)
+                // Area de rascunho
                 al_draw_rounded_rectangle(560, 270, 1360, 360, 18, 18, cyan, 3);
                 char scratch_text[64];
                 if (scratch_length == 0) {
@@ -548,9 +560,18 @@ int main(void)
                 }
                 draw_text(font, white, LARGURA / 2, 295, ALLEGRO_ALIGN_CENTRE, scratch_text);
 
-                // Nave
-                al_draw_filled_triangle(SHIP_NOSE_X, ship_y, SHIP_NOSE_X - 90, ship_y - 55,
-                    SHIP_NOSE_X - 90, ship_y + 55, cyan);
+                // DESENHAR O JOGADOR USANDO A SPRITESHEET ANIMADA (IDLE)
+                int larguraFrame = al_get_bitmap_width(bitmap_Jogador) / totalFrames;
+                int alturaFrame = al_get_bitmap_height(bitmap_Jogador);
+
+                // Desenha o quadro atual da animacao centralizado na posicao da nave
+                al_draw_bitmap_region(
+                    bitmap_Jogador,
+                    frameAtual * larguraFrame, 0,   // Coordenada X, Y do frame atual na imagem
+                    larguraFrame, alturaFrame,       // Largura e altura de um frame individual
+                    SHIP_NOSE_X - (larguraFrame / 2), ship_y - (alturaFrame / 2), // Posicao na tela
+                    0                                // Flags (ex: espelhamento)
+                );
                 draw_text(font, white, 160, ship_y + 72, ALLEGRO_ALIGN_CENTRE, "NAVE");
 
                 // Inimigos e respostas
@@ -575,7 +596,7 @@ int main(void)
                     }
                 }
 
-                // Game Over da fase
+                // Game Over
                 if (game_over) {
                     al_draw_filled_rounded_rectangle(560, 390, 1360, 650, 24, 24, al_map_rgb(16, 20, 48));
                     draw_text(font, red, LARGURA / 2, 425, ALLEGRO_ALIGN_CENTRE, "FIM DE JOGO");
@@ -609,7 +630,8 @@ int main(void)
     // =================================
 
     al_destroy_bitmap(bitmap_Tela1);
-    if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase); // <--- Liberar o bitmap da fase
+    if (bitmap_Fase) al_destroy_bitmap(bitmap_Fase);
+    if (bitmap_Jogador) al_destroy_bitmap(bitmap_Jogador); // <--- Liberar bitmap do jogador
     if (font) al_destroy_font(font);
     al_destroy_timer(timer);
     al_destroy_event_queue(fila);
